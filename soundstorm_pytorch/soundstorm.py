@@ -38,15 +38,32 @@ class ConformerWrapper(nn.Module):
         if isinstance(conformer, dict):
             self.conformer = Conformer(**self.conformer)
 
+        dim = self.conformer.dim
+
+        self.mask_tokens = nn.Parameter(torch.randn(num_tokens_reduce, dim))
+
         self.num_tokens_reduce = num_tokens_reduce
         self.num_tokens_per_head = default(num_tokens_per_head, num_tokens_reduce)
-
-        dim = self.conformer.dim
 
         self.heads = nn.Sequential(
             nn.Linear(dim, dim * self.num_tokens_per_head),
             Rearrange('b n (h d) -> b (n h) d', h = self.num_tokens_per_head)
         )
+
+    def add_mask_tokens(
+        self,
+        x,
+        mask
+    ):
+        h = self.num_tokens_reduce
+
+        x = torch.where(
+            rearrange(mask, 'b (n h) -> b n h 1', h = h),
+            rearrange(x, 'b (n h) d -> b n h d', h = h),
+            self.mask_tokens,
+        )
+
+        return rearrange(x, 'b n h d -> b (n h) d')
 
     def forward(
         self,
