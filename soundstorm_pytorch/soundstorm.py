@@ -4,6 +4,8 @@ import torch.nn.functional as F
 
 from einops import rearrange
 
+from audiolm_pytorch import SoundStream
+
 # helpers
 
 def exists(val):

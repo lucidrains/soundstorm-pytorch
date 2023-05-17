@@ -18,7 +18,7 @@ setup(
     'audio generation'
   ],
   install_requires=[
-    'audiolm-pytorch>=0.30.7',
+    'audiolm-pytorch>=1.0.0',
     'einops>=0.6.1',
     'torch>=1.6',
   ],
