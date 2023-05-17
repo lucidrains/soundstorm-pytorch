@@ -2,7 +2,7 @@ import torch
 from torch import Tensor, nn, einsum
 import torch.nn.functional as F
 
-from einops import rearrange, reduce
+from einops import rearrange, reduce, repeat
 from einops.layers.torch import Rearrange
 
 from beartype import beartype
@@ -50,9 +50,17 @@ class ConformerWrapper(nn.Module):
 
     def forward(
         self,
-        x
+        x,
+        cond = None
     ):
         x = reduce(x, 'b (n h) d -> b n d', h = self.num_tokens_reduce)
+
+        if exists(cond):
+            if cond.ndim == 2:
+                cond = rearrange(cond, 'b d -> b 1 d')
+
+            x = x + cond
+
         logits = self.conformer(x)
         out = self.heads(logits)
         return out
