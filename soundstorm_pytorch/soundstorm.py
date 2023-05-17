@@ -6,6 +6,7 @@ from einops import rearrange, reduce
 from einops.layers.torch import Rearrange
 
 from beartype import beartype
+from beartype.typing import Union, Dict
 
 from conformer import Conformer
 from soundstorm_pytorch.attend import Attend
@@ -27,17 +28,22 @@ class ConformerWrapper(nn.Module):
     def __init__(
         self,
         *,
-        conformer: Conformer,
+        conformer: Union[Conformer, Dict[str, any]],
         num_tokens_reduce,
         num_tokens_per_head = None,
     ):
         super().__init__()
         self.conformer = conformer
 
+        if isinstance(conformer, dict):
+            self.conformer = Conformer(**conformer)
+        else:
+            self.conformer = conformer
+
         self.num_tokens_reduce = num_tokens_reduce
         self.num_tokens_per_head = default(num_tokens_per_head, num_tokens_reduce)
 
-        dim = conformer.dim
+        dim = self.conformer.dim
 
         self.heads = nn.Sequential(
             nn.Linear(dim, dim * self.num_tokens_per_head),
