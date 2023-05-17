@@ -8,6 +8,10 @@ They basically applied <a href="https://arxiv.org/abs/2202.04200">MaskGiT</a> to
 
 <a href="https://google-research.github.io/seanet/soundstorm/examples/">Project Page</a>
 
+## Appreciation
+
+- <a href="https://stability.ai/">Stability</a> and <a href="https://huggingface.co/">🤗 Huggingface</a> for their generous sponsorships to work on and open source cutting edge artificial intelligence research
+
 ## Citations
 
 ```bibtex
