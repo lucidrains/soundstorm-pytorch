@@ -4,6 +4,8 @@ import torch.nn.functional as F
 
 from einops import rearrange
 
+from soundstorm_pytorch.attend import Attend
+
 from audiolm_pytorch import SoundStream
 
 # helpers
