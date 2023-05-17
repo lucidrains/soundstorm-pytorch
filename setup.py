@@ -19,6 +19,7 @@ setup(
   ],
   install_requires=[
     'audiolm-pytorch>=1.0.0',
+    'conformer>=0.3.0',
     'einops>=0.6.1',
     'torch>=1.6',
   ],
