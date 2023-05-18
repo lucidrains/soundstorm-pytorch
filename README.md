@@ -12,6 +12,55 @@ They basically applied <a href="https://arxiv.org/abs/2202.04200">MaskGiT</a> to
 
 - <a href="https://stability.ai/">Stability</a> and <a href="https://huggingface.co/">🤗 Huggingface</a> for their generous sponsorships to work on and open source cutting edge artificial intelligence research
 
+- <a href="https://huggingface.co/docs/accelerate/index">🤗 Accelerate</a> for providing a simple and powerful solution for training
+
+## Install
+
+```bash
+$ pip install soundstorm-pytorch
+```
+
+## Usage
+
+```python
+import torch
+from soundstorm_pytorch import SoundStorm, ConformerWrapper
+
+conformer = ConformerWrapper(
+    codebook_size = 1024,
+    num_quantizers = 4,
+    conformer = dict(
+        dim = 512,
+        depth = 2
+    ),
+)
+
+model = SoundStorm(
+    conformer,
+    steps = 18,          # 18 steps, as in original maskgit paper
+    schedule = 'cosine'  # currently the best schedule is cosine
+)
+
+# get your codes from the soundstream
+
+codes = torch.randint(0, 1024, (2, 1024))
+
+# learn to de-mask
+
+loss, _ = model(codes)
+loss.backward()
+
+# generate by de-masking iteratively
+
+generated = model.generate(1024, batch_size = 2) # (2, 1024)
+```
+
+## Todo
+
+- [ ] integrate soundstream
+- [ ] turn it into a command line tool
+- [ ] add cross attention and adaptive layernorm conditioning (just copy paste in the entire conformer repository, if conditioning adds too much cruft to the other repo)
+
 ## Citations
 
 ```bibtex

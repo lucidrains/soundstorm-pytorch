@@ -8,7 +8,7 @@ from torch import Tensor, nn, einsum
 import torch.nn.functional as F
 
 from einops import rearrange, reduce, repeat, unpack, pack
-from einops.layers.torch import Rearrange
+from einops.layers.torch import Rearrange, EinMix
 
 from beartype import beartype
 from beartype.typing import Union, Dict, Optional
@@ -25,6 +25,9 @@ def exists(val):
 
 def default(val, d):
     return val if exists(val) else d
+
+def divisible_by(numer, denom):
+    return (numer % denom) == 0
 
 # sampling helpers
 
@@ -87,9 +90,9 @@ class ConformerWrapper(nn.Module):
     def __init__(
         self,
         *,
-        logit_dim = None,
+        codebook_size,
+        num_quantizers,
         conformer: Union[Conformer, Dict[str, any]],
-        num_tokens_reduce,
         num_tokens_per_head = None,
     ):
         super().__init__()
@@ -100,11 +103,19 @@ class ConformerWrapper(nn.Module):
 
         dim = self.conformer.dim
 
-        self.dim = dim
-        self.mask_tokens = nn.Parameter(torch.randn(num_tokens_reduce, dim))
+        num_codes_with_mask = codebook_size + 1
 
-        self.num_tokens_reduce = num_tokens_reduce
-        self.num_tokens_per_head = default(num_tokens_per_head, num_tokens_reduce)
+        self.code_embeds = nn.Embedding(num_codes_with_mask * num_quantizers, dim)
+
+        self.register_buffer('quantizer_offsets', torch.arange(num_quantizers) * num_codes_with_mask, persistent = False)
+        self.register_buffer('mask_tokens', self.quantizer_offsets + num_codes_with_mask, persistent = False)
+
+        self.dim = dim
+        self.codebook_size = codebook_size
+        self.num_codes_with_mask = num_codes_with_mask
+        self.num_quantizers = num_quantizers
+
+        self.num_tokens_per_head = default(num_tokens_per_head, num_quantizers)
 
         self.heads = nn.Sequential(
             nn.Linear(dim, dim * self.num_tokens_per_head),
@@ -112,32 +123,39 @@ class ConformerWrapper(nn.Module):
         )
 
         self.to_logits = nn.Sequential(
-            RMSNorm(dim),
-            Linear(dim, logit_dim)
-        ) if logit_dim else None
-
-    def add_mask_tokens(
-        self,
-        x,
-        mask
-    ):
-        h = self.num_tokens_reduce
-
-        x = torch.where(
-            rearrange(mask, 'b (n h) -> b n h 1', h = h),
-            rearrange(x, 'b (n h) d -> b n h d', h = h),
-            self.mask_tokens,
+            nn.LayerNorm(dim),
+            Rearrange('b (n q) d -> b n q d', q = self.num_quantizers),
+            EinMix(
+                'b n q d -> b n q l',
+                weight_shape = 'q d l',
+                bias_shape = 'q l',
+                q = self.num_quantizers,
+                l = codebook_size,
+                d = dim
+            ),
+            Rearrange('b ... d -> b (...) d')
         )
-
-        return rearrange(x, 'b n h d -> b (n h) d')
 
     def forward(
         self,
         x,
         cond = None,
-        return_embeddings = False
+        sum_embeds = None,
+        return_embeddings = False,
+        return_logits_and_embeddings = False
     ):
-        x = reduce(x, 'b (n h) d -> b n d', h = self.num_tokens_reduce)
+        n, q = x.shape[-1], self.num_quantizers
+        assert divisible_by(n, q), 'sequence must be divisible by number of quantizers'
+
+        x = rearrange(x, 'b (n q) -> b n q', q = q)
+        x = x + self.quantizer_offsets
+
+        x = self.code_embeds(x)
+
+        if exists(sum_embeds):
+            x = x + sum_embeds
+
+        x = reduce(x, 'b n q d -> b n d', 'sum')
 
         if exists(cond):
             if cond.ndim == 2:
@@ -152,6 +170,10 @@ class ConformerWrapper(nn.Module):
             return embeds
 
         logits = self.to_logits(embeds)
+
+        if return_logits_and_embeddings:
+            return logits, embeds
+
         return logits
 
 # for main logits as well as self token critic
@@ -182,8 +204,7 @@ class SoundStorm(nn.Module):
         self,
         net: ConformerWrapper,
         *,
-        codebook_size,
-        mask_id = -1,
+        soundstream: Optional[SoundStream] = None,
         steps = 18,
         self_cond = False,
         self_cond_train_prob = 0.75,
@@ -197,13 +218,13 @@ class SoundStorm(nn.Module):
         super().__init__()
         assert not (self_token_critic and exists(token_critic))
 
-        self.net = LogitHead(net, codebook_size)
+        self.net = net
 
         dim = net.dim
         self.dim = dim
-        self.num_tokens = codebook_size
+        self.num_tokens = net.codebook_size
 
-        self.mask_id = mask_id
+        self.mask_id = net.codebook_size
 
         # afaict, maskgit paper did not do this
         # but may help for self conditioning, as used successfully in original BERT
@@ -244,6 +265,7 @@ class SoundStorm(nn.Module):
     @torch.no_grad()
     def generate(
         self,
+        max_seq_len,
         batch_size = None,
         start_temperature = 1.,
         filter_thres = 0.7,
@@ -262,14 +284,14 @@ class SoundStorm(nn.Module):
 
         # sequence starts off as all masked
 
-        shape = (batch_size, self.max_seq_len)
+        shape = (batch_size, max_seq_len)
 
         seq = torch.full(shape, self.mask_id, device = device)
         mask = torch.full(shape, True, device = device)
 
         # slowly demask
 
-        all_mask_num_tokens = (self.schedule_fn(times[1:]) * self.max_seq_len).long()
+        all_mask_num_tokens = (self.schedule_fn(times[1:]) * max_seq_len).long()
 
         # self conditioning
 
@@ -336,7 +358,7 @@ class SoundStorm(nn.Module):
         generator_sample_temperature = None,
         **kwargs
     ):
-        b, n, d, device = *x.shape, x.device
+        b, n, device = *x.shape, x.device
 
         orig_seq = x.clone()
 
@@ -394,7 +416,7 @@ class SoundStorm(nn.Module):
         )
 
         if not exists(self.token_critic) or only_train_generator:
-            return Losses(loss, loss, None)
+            return loss, LossBreakdown(loss, None)
 
         sampled_ids = gumbel_sample(logits, temperature = default(generator_sample_temperature, random()))
         generated = torch.where(mask, sampled_ids, orig_seq)
