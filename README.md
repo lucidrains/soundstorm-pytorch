@@ -43,16 +43,16 @@ model = SoundStorm(
     schedule = 'cosine'  # currently the best schedule is cosine
 )
 
-# get your codes from the soundstream
+# get your pre-encoded codebook ids from the soundstream from a lot of raw audio
 
 codes = torch.randint(0, 1024, (2, 1024))
 
-# learn to de-mask
+# do the below in a loop for a ton of data
 
 loss, _ = model(codes)
 loss.backward()
 
-# generate by de-masking iteratively
+# model can now generate in 18 steps. ~2 seconds sounds reasonable
 
 generated = model.generate(1024, batch_size = 2) # (2, 1024)
 ```
@@ -84,12 +84,18 @@ model = SoundStorm(
     soundstream = soundstream   # pass in the soundstream
 )
 
-audio = torch.randn(2, 10080)   # now you have a raw audio that you directly pass into the model
+# find as much audio you'd like the model to learn
+
+audio = torch.randn(2, 10080)
+
+# course it through the model and take a gazillion tiny steps
 
 loss, _ = model(audio)
 loss.backward()
 
-generated_audio = model.generate(1024, batch_size = 2)  # generated audio is also a raw wave now
+# and now you can generate state-of-the-art speech
+
+generated_audio = model.generate(1024, batch_size = 2)  # generated audio is also a raw wave if soundstream is present
 ```
 
 ## Todo
