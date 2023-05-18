@@ -106,6 +106,7 @@ generated_audio = model.generate(1024, batch_size = 2)  # generated audio is als
 - [ ] turn it into a command line tool
 - [ ] add cross attention and adaptive layernorm conditioning (just copy paste in the entire conformer repository, if conditioning adds too much cruft to the other repo)
 - [ ] make sure grouped rvq is supported. concat embeddings rather than sum across group dimension
+- [ ] trainer with accelerate
 
 ## Citations
 
