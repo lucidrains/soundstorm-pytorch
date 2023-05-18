@@ -1,5 +1,6 @@
 import math
 from random import random
+from functools import wraps
 from contextlib import nullcontext
 from collections import namedtuple
 
@@ -28,6 +29,16 @@ def default(val, d):
 
 def divisible_by(numer, denom):
     return (numer % denom) == 0
+
+def eval_decorator(fn):
+    @wraps(fn)
+    def inner(model, *args, **kwargs):
+        was_training = model.training
+        model.eval()
+        out = fn(model, *args, **kwargs)
+        model.train(was_training)
+        return out
+    return inner
 
 # sampling helpers
 
@@ -274,6 +285,7 @@ class SoundStorm(nn.Module):
         self.critic_loss_weight = critic_loss_weight
 
     @torch.no_grad()
+    @eval_decorator
     def generate(
         self,
         seq_len = None,
@@ -295,9 +307,6 @@ class SoundStorm(nn.Module):
         batch_size = default(batch_size, 1)
 
         device = next(self.net.parameters()).device
-
-        was_training = self.training
-        self.eval()
 
         times = torch.linspace(0., 1., self.steps + 1)
 
@@ -361,8 +370,6 @@ class SoundStorm(nn.Module):
             mask_indices = scores.topk(mask_num_tokens, dim = -1).indices
             mask = torch.zeros_like(scores, dtype = torch.bool).scatter(1, mask_indices, True)
             seq = seq.masked_fill(mask, self.mask_id)
-
-        self.train(was_training)
 
         out = seq
 
