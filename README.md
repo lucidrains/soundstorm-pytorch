@@ -95,14 +95,15 @@ loss.backward()
 
 # and now you can generate state-of-the-art speech
 
-generated_audio = model.generate(1024, batch_size = 2)  # generated audio is also a raw wave if soundstream is present
+generated_audio = model.generate(seconds = 30, batch_size = 2)  # generate 30 seconds of audio (it will calculate the length in seconds based off the sampling frequency and cumulative downsamples in the soundstream passed in above)
 ```
 
 ## Todo
 
 - [x] integrate soundstream
+- [x] when generating, and length can be defined in seconds (takes into sampling freq etc)
 
-- [ ] when generating, make sure it can return audio file, and length can be defined in seconds (takes into sampling freq etc)
+- [ ] option to return list of audio files when generating
 - [ ] turn it into a command line tool
 - [ ] add cross attention and adaptive layernorm conditioning (just copy paste in the entire conformer repository, if conditioning adds too much cruft to the other repo)
 - [ ] make sure grouped rvq is supported. concat embeddings rather than sum across group dimension

@@ -276,13 +276,21 @@ class SoundStorm(nn.Module):
     @torch.no_grad()
     def generate(
         self,
-        max_seq_len,
+        seq_len = None,
+        *,
+        seconds = None,
         batch_size = None,
         start_temperature = 1.,
         filter_thres = 0.7,
         noise_level_scale = 1.,
         **kwargs
     ):
+        assert exists(seq_len) ^ exists(seconds)
+
+        if not exists(seq_len):
+            assert exists(self.soundstream), 'soundstream must be passed in to generate in seconds'
+            seq_len = (seconds * self.soundstream.target_sample_hz) //  self.soundstream.seq_len_multiple_of
+
         sample_one = not exists(batch_size)
         batch_size = default(batch_size, 1)
 
@@ -295,14 +303,14 @@ class SoundStorm(nn.Module):
 
         # sequence starts off as all masked
 
-        shape = (batch_size, max_seq_len)
+        shape = (batch_size, seq_len)
 
         seq = torch.full(shape, self.mask_id, device = device)
         mask = torch.full(shape, True, device = device)
 
         # slowly demask
 
-        all_mask_num_tokens = (self.schedule_fn(times[1:]) * max_seq_len).long()
+        all_mask_num_tokens = (self.schedule_fn(times[1:]) * seq_len).long()
 
         # self conditioning
 
