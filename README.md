@@ -14,6 +14,8 @@ They basically applied <a href="https://arxiv.org/abs/2202.04200">MaskGiT</a> to
 
 - <a href="https://huggingface.co/docs/accelerate/index">🤗 Accelerate</a> for providing a simple and powerful solution for training
 
+- <a href="https://einops.rocks/">Einops</a> for the indispensable abstraction that makes building neural networks fun, easy, and uplifting
+
 ## Install
 
 ```bash
