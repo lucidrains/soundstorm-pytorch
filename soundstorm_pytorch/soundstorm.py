@@ -122,6 +122,9 @@ class ConformerWrapper(nn.Module):
             Rearrange('b n (h d) -> b (n h) d', h = self.num_tokens_per_head)
         )
 
+        # each quantizer codebook would require its own logits weight and bias matrices
+        # the amazing einops makes this easy with 'EinMix'
+
         self.to_logits = nn.Sequential(
             nn.LayerNorm(dim),
             Rearrange('b (n q) d -> b n q d', q = self.num_quantizers),
