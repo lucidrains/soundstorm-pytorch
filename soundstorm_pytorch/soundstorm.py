@@ -169,7 +169,7 @@ class ConformerWrapper(nn.Module):
         if exists(sum_embeds):
             x = x + sum_embeds
 
-        x = reduce(x, 'b n q d -> b n d', 'sum')
+        x = rearrange(x, 'b n q d -> b (n q) d')
 
         if exists(cond):
             if cond.ndim == 2:
