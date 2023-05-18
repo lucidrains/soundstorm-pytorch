@@ -219,6 +219,13 @@ class SoundStorm(nn.Module):
         critic_loss_weight = 1.
     ):
         super().__init__()
+        self.soundstream = soundstream
+
+        if exists(self.soundstream):
+            assert soundstream.rq_groups == 1, 'grouped residual vector quantized soundstream not supported, yet'
+            assert net.codebook_size == soundstream.codebook_size
+            assert net.num_quantizers == soundstream.num_quantizers
+
         assert not (self_token_critic and exists(token_critic))
 
         self.net = net
@@ -226,6 +233,7 @@ class SoundStorm(nn.Module):
         dim = net.dim
         self.dim = dim
         self.num_tokens = net.codebook_size
+        self.num_quantizers = net.num_quantizers
 
         self.mask_id = net.codebook_size
 
@@ -348,10 +356,20 @@ class SoundStorm(nn.Module):
 
         self.train(was_training)
 
-        if sample_one:
-            seq = rearrange(seq, '1 n -> n')
+        out = seq
 
-        return seq
+        if exists(self.soundstream):
+            seq = rearrange(seq, 'b (n q) -> b n q', q = self.num_quantizers)
+
+            with torch.no_grad():
+                self.soundstream.eval()
+                out = self.soundstream.decode_from_codebook_indices(seq)
+                out = rearrange(out, 'b 1 ... -> b ...')
+
+        if sample_one:
+            out = rearrange(out, '1 ... -> ...')
+
+        return out
 
     def forward(
         self,
@@ -361,6 +379,15 @@ class SoundStorm(nn.Module):
         generator_sample_temperature = None,
         **kwargs
     ):
+        is_raw_audio = x.dtype == torch.float
+
+        if is_raw_audio:
+            assert exists(self.soundstream)
+            with torch.no_grad():
+                self.soundstream.eval()
+                _, x, _ = self.soundstream(x, return_encoded = True)
+                x = rearrange(x, 'b n q -> b (n q)')
+
         b, n, device = *x.shape, x.device
 
         orig_seq = x.clone()

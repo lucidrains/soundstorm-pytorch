@@ -57,9 +57,46 @@ loss.backward()
 generated = model.generate(1024, batch_size = 2) # (2, 1024)
 ```
 
+To directly train on raw audio, you need to pass in your pretrained `SoundStream` into `SoundStorm`. You can train your own `SoundStream` at <a href="https://github.com/lucidrains/audiolm-pytorch#soundstream--encodec">audiolm-pytorch</a>.
+
+```python
+import torch
+from soundstorm_pytorch import SoundStorm, ConformerWrapper, Conformer, SoundStream
+
+conformer = ConformerWrapper(
+    codebook_size = 1024,
+    num_quantizers = 4,
+    conformer = dict(
+        dim = 512,
+        depth = 2
+    ),
+)
+
+soundstream = SoundStream(
+    codebook_size = 1024,
+    rq_num_quantizers = 4,
+    attn_window_size = 128,
+    attn_depth = 2
+)
+
+model = SoundStorm(
+    conformer,
+    soundstream = soundstream   # pass in the soundstream
+)
+
+audio = torch.randn(2, 10080)   # now you have a raw audio that you directly pass into the model
+
+loss, _ = model(audio)
+loss.backward()
+
+generated_audio = model.generate(1024, batch_size = 2)  # generated audio is also a raw wave now
+```
+
 ## Todo
 
-- [ ] integrate soundstream
+- [x] integrate soundstream
+
+- [ ] when generating, make sure it can return audio file, and length can be defined in seconds (takes into sampling freq etc)
 - [ ] turn it into a command line tool
 - [ ] add cross attention and adaptive layernorm conditioning (just copy paste in the entire conformer repository, if conditioning adds too much cruft to the other repo)
 
@@ -111,5 +148,15 @@ generated = model.generate(1024, batch_size = 2) # (2, 1024)
     author  = {Erik Nijkamp and Bo Pang and Ying Nian Wu and Caiming Xiong},
     booktitle = {North American Chapter of the Association for Computational Linguistics},
     year    = {2021}
+}
+```
+
+```bibtex
+@inproceedings{rogozhnikov2022einops,
+    title   = {Einops: Clear and Reliable Tensor Manipulations with Einstein-like Notation},
+    author  = {Alex Rogozhnikov},
+    booktitle = {International Conference on Learning Representations},
+    year    = {2022},
+    url     = {https://openreview.net/forum?id=oapKSVM2bcj}
 }
 ```
