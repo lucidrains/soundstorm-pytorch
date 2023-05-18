@@ -100,6 +100,7 @@ class ConformerWrapper(nn.Module):
 
         dim = self.conformer.dim
 
+        self.dim = dim
         self.mask_tokens = nn.Parameter(torch.randn(num_tokens_reduce, dim))
 
         self.num_tokens_reduce = num_tokens_reduce
@@ -153,16 +154,18 @@ class ConformerWrapper(nn.Module):
         logits = self.to_logits(embeds)
         return logits
 
-# self token critic
-# inspired by Nijkamp et al. - https://aclanthology.org/2021.naacl-main.409/
+# for main logits as well as self token critic
 
-class SelfCritic(nn.Module):
-    def __init__(self, net):
+class LogitHead(nn.Module):
+    def __init__(
+        self,
+        net: ConformerWrapper,
+        logit_dim
+    ):
         super().__init__()
         self.net = net
-
-        dim = net.attn_layers.dim
-        self.to_logits = nn.Linear(dim, 1)
+        dim = net.dim
+        self.to_logits = nn.Linear(dim, logit_dim)
 
     def forward(self, x):
         embed = self.net(x, return_embeddings = True)
@@ -170,7 +173,7 @@ class SelfCritic(nn.Module):
 
 # main soundstorm class, which is just a maskgit
 
-Losses = namedtuple('Losses', ['loss', 'generator_loss', 'critic_loss'])
+LossBreakdown = namedtuple('LossBreakdown', ['generator_loss', 'critic_loss'])
 
 class SoundStorm(nn.Module):
 
@@ -179,7 +182,8 @@ class SoundStorm(nn.Module):
         self,
         net: ConformerWrapper,
         *,
-        mask_id,
+        codebook_size,
+        mask_id = -1,
         steps = 18,
         self_cond = False,
         self_cond_train_prob = 0.75,
@@ -187,17 +191,17 @@ class SoundStorm(nn.Module):
         random_token_prob = 0.1,         # which percentage of tokens to be replaced with random token, done in original MLM paper
         schedule = 'linear',
         can_mask_prev_unmasked = False,  # when unmasking, whether it can remask previously unmasked        
-        self_token_critic = False,
+        self_token_critic = False,       # https://aclanthology.org/2021.naacl-main.409/
         critic_loss_weight = 1.
     ):
         super().__init__()
         assert not (self_token_critic and exists(token_critic))
 
-        self.net = net
+        self.net = LogitHead(net, codebook_size)
 
-        dim = net.emb_dim
+        dim = net.dim
         self.dim = dim
-        self.num_tokens = net.num_tokens
+        self.num_tokens = codebook_size
 
         self.mask_id = mask_id
 
@@ -207,7 +211,6 @@ class SoundStorm(nn.Module):
         self.no_replace_prob = no_replace_prob
         self.random_token_prob = random_token_prob
 
-        self.max_seq_len = net.max_seq_len
         self.steps = steps
 
         if callable(schedule):
@@ -232,10 +235,9 @@ class SoundStorm(nn.Module):
 
         # token critic
 
-        self.token_critic = token_critic
-
+        self.token_critic = None
         if self_token_critic:
-            self.token_critic = SelfCritic(net)
+            self.token_critic = LogitHead(net, 1)
 
         self.critic_loss_weight = critic_loss_weight
 
@@ -334,8 +336,7 @@ class SoundStorm(nn.Module):
         generator_sample_temperature = None,
         **kwargs
     ):
-        b, n, device = *x.shape, x.device
-        assert n == self.max_seq_len
+        b, n, d, device = *x.shape, x.device
 
         orig_seq = x.clone()
 
@@ -414,4 +415,4 @@ class SoundStorm(nn.Module):
         else:
             total_loss = loss + critic_loss * self.critic_loss_weight
 
-        return Losses(total_loss, loss,  critic_loss)
+        return total_loss, LossBreakdown(loss,  critic_loss)
