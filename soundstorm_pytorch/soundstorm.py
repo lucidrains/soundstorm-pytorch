@@ -107,7 +107,6 @@ class ConformerWrapper(nn.Module):
         num_quantizers,
         conformer: Union[Conformer, Dict[str, any]],
         num_tokens_per_head = None,
-        vector_quantize_kwargs: Optional[Dict[str, any]] = None,
     ):
         super().__init__()
         self.conformer = conformer
@@ -128,10 +127,6 @@ class ConformerWrapper(nn.Module):
         self.codebook_size = codebook_size
         self.num_codes_with_mask = num_codes_with_mask
         self.num_quantizers = num_quantizers
-
-        vector_quantize_kwargs = default(vector_quantize_kwargs, {})
-
-        self.vector_quantizers = nn.ModuleList([VectorQuantize(dim=dim, codebook_size=codebook_size, **vector_quantize_kwargs) for _ in range(num_quantizers)])
 
         self.num_tokens_per_head = default(num_tokens_per_head, num_quantizers)
 
@@ -160,16 +155,15 @@ class ConformerWrapper(nn.Module):
     def forward(
         self,
         x,
-        y=None,
-        cond=None,
-        sum_embeds=None,
-        return_embeddings=False,
-        return_logits_and_embeddings=False
+        cond = None,
+        sum_embeds = None,
+        return_embeddings = False,
+        return_logits_and_embeddings = False
     ):
         n, q = x.shape[-1], self.num_quantizers
-        assert divisible_by(n, q), 'sequence must be divisible by the number of quantizers'
+        assert divisible_by(n, q), 'sequence must be divisible by number of quantizers'
 
-        x = rearrange(x, 'b (n q) -> b n q', q=q)
+        x = rearrange(x, 'b (n q) -> b n q', q = q)
         x = x + self.quantizer_offsets
 
         x = self.code_embeds(x)
@@ -186,28 +180,6 @@ class ConformerWrapper(nn.Module):
             x = x + cond
 
         logits = self.conformer(x)
-
-        # GRVQ
-        y1, y2 = logits.chunk(2, dim=1)
-
-        y_hat1 = torch.zeros_like(y1)
-        y_hat2 = torch.zeros_like(y2)
-
-        residual1 = y1
-        residual2 = y2
-
-        Nq = len(self.vector_quantizers) // 2
-
-        for i in range(Nq):
-            y_hat1 += self.vector_quantizers[i](residual1)
-            residual1 -= self.vector_quantizers[i](residual1)
-
-        for i in range(Nq, 2 * Nq):
-            y_hat2 += self.vector_quantizers[i](residual2)
-            residual2 -= self.vector_quantizers[i](residual2)
-
-        logits = torch.cat((y_hat1, y_hat2), dim=1)
-
         embeds = self.heads(logits)
 
         if return_embeddings or not exists(self.to_logits):
@@ -482,6 +454,27 @@ class SoundStorm(nn.Module):
 
         with context():
             logits = self.net(masked, **kwargs)
+
+        # GRVQ
+        y_hat = torch.zeros_like(logits)
+
+        Nq = self.net.num_quantizers
+        num_quantizers_per_group = Nq // 2
+
+        for group in range(2):
+            start_idx = group * num_quantizers_per_group
+            end_idx = (group + 1) * num_quantizers_per_group
+
+            residual = logits[:, start_idx:end_idx]
+            y_hat_group = torch.zeros_like(residual)
+
+            for i in range(start_idx, end_idx):
+                y_hat_group += self.net.vector_quantizers[i](residual)
+                residual -= self.net.vector_quantizers[i](residual)
+
+            y_hat[:, start_idx:end_idx] = y_hat_group
+
+        logits = y_hat
 
         # cross entropy loss
 
