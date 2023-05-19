@@ -19,8 +19,6 @@ from soundstorm_pytorch.attend import Attend
 
 from audiolm_pytorch import SoundStream
 
-from vector_quantize_pytorch import VectorQuantize
-
 # helpers
 
 def exists(val):
@@ -454,27 +452,6 @@ class SoundStorm(nn.Module):
 
         with context():
             logits = self.net(masked, **kwargs)
-
-        # GRVQ
-        y_hat = torch.zeros_like(logits)
-
-        Nq = self.net.num_quantizers
-        num_quantizers_per_group = Nq // 2
-
-        for group in range(2):
-            start_idx = group * num_quantizers_per_group
-            end_idx = (group + 1) * num_quantizers_per_group
-
-            residual = logits[:, start_idx:end_idx]
-            y_hat_group = torch.zeros_like(residual)
-
-            for i in range(start_idx, end_idx):
-                y_hat_group += self.net.vector_quantizers[i](residual)
-                residual -= self.net.vector_quantizers[i](residual)
-
-            y_hat[:, start_idx:end_idx] = y_hat_group
-
-        logits = y_hat
 
         # cross entropy loss
 
