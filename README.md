@@ -102,11 +102,11 @@ generated_audio = model.generate(seconds = 30, batch_size = 2)  # generate 30 se
 
 - [x] integrate soundstream
 - [x] when generating, and length can be defined in seconds (takes into sampling freq etc)
+- [x] make sure grouped rvq is supported. concat embeddings rather than sum across group dimension
 
 - [ ] option to return list of audio files when generating
 - [ ] turn it into a command line tool
 - [ ] add cross attention and adaptive layernorm conditioning (just copy paste in the entire conformer repository, if conditioning adds too much cruft to the other repo)
-- [ ] make sure grouped rvq is supported. concat embeddings rather than sum across group dimension
 - [ ] trainer with accelerate
 
 ## Citations
