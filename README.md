@@ -105,12 +105,12 @@ generated_audio = model.generate(seconds = 30, batch_size = 2)  # generate 30 se
 - [x] make sure grouped rvq is supported. concat embeddings rather than sum across group dimension
 - [x] just copy conformer over and redo shaw's relative positional embedding with rotary embedding. nobody uses shaw anymore.
 - [x] default flash attention to true
+- [x] remove batchnorm, and just use layernorm, but after the swish (as in normformer paper)
 
 - [ ] option to return list of audio files when generating
 - [ ] turn it into a command line tool
 - [ ] add cross attention and adaptive layernorm conditioning
 - [ ] trainer with accelerate
-- [ ] add ability to use conformer without batchnorm, substituting with groupnorm + weight standardization
 
 ## Citations
 

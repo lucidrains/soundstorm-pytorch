@@ -159,6 +159,17 @@ class Scale(nn.Module):
     def forward(self, x, **kwargs):
         return self.fn(x, **kwargs) * self.scale
 
+class ChanLayerNorm(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.gamma = nn.Parameter(torch.ones(1, dim, 1))
+
+    def forward(self, x):
+        eps = 1e-6 if x.dtype == torch.float32 else 1e-4
+        var = torch.var(x, dim = 1, unbiased = False, keepdim = True)
+        mean = torch.mean(x, dim = 1, keepdim = True)
+        return (x - mean) * var.clamp(min = eps).rsqrt() * self.gamma
+
 class PreNorm(nn.Module):
     def __init__(self, dim, fn):
         super().__init__()
@@ -255,8 +266,8 @@ class ConformerConvModule(nn.Module):
             nn.Conv1d(dim, inner_dim * 2, 1),
             GLU(dim=1),
             DepthWiseConv1d(inner_dim, inner_dim, kernel_size = kernel_size, padding = padding),
-            nn.BatchNorm1d(inner_dim) if not causal else nn.Identity(),
             Swish(),
+            ChanLayerNorm(inner_dim),
             nn.Conv1d(inner_dim, dim, 1),
             Rearrange('b c n -> b n c'),
             nn.Dropout(dropout)
