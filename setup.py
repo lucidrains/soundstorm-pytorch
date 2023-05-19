@@ -21,6 +21,7 @@ setup(
     'accelerate',
     'audiolm-pytorch>=1.0.1',
     'beartype',
+    'classifier-free-guidance-pytorch>=0.1.5',
     'conformer>=0.3.2',
     'einops>=0.6.1',
     'torch>=1.6',
