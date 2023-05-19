@@ -103,11 +103,14 @@ generated_audio = model.generate(seconds = 30, batch_size = 2)  # generate 30 se
 - [x] integrate soundstream
 - [x] when generating, and length can be defined in seconds (takes into sampling freq etc)
 - [x] make sure grouped rvq is supported. concat embeddings rather than sum across group dimension
+- [x] just copy conformer over and redo shaw's relative positional embedding with rotary embedding. nobody uses shaw anymore.
+- [x] default flash attention to true
 
 - [ ] option to return list of audio files when generating
 - [ ] turn it into a command line tool
-- [ ] add cross attention and adaptive layernorm conditioning (just copy paste in the entire conformer repository, if conditioning adds too much cruft to the other repo)
+- [ ] add cross attention and adaptive layernorm conditioning
 - [ ] trainer with accelerate
+- [ ] add ability to use conformer without batchnorm, substituting with groupnorm + weight standardization
 
 ## Citations
 
@@ -167,5 +170,16 @@ generated_audio = model.generate(seconds = 30, batch_size = 2)  # generate 30 se
     booktitle = {International Conference on Learning Representations},
     year    = {2022},
     url     = {https://openreview.net/forum?id=oapKSVM2bcj}
+}
+```
+
+```bibtex
+@misc{su2021roformer,
+    title   = {RoFormer: Enhanced Transformer with Rotary Position Embedding},
+    author  = {Jianlin Su and Yu Lu and Shengfeng Pan and Bo Wen and Yunfeng Liu},
+    year    = {2021},
+    eprint  = {2104.09864},
+    archivePrefix = {arXiv},
+    primaryClass = {cs.CL}
 }
 ```
