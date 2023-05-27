@@ -696,17 +696,19 @@ class SoundStorm(nn.Module):
             with torch.no_grad():
                 self.soundstream.eval()
                 _, x, _ = self.soundstream(x, return_encoded = True)
-                x = rearrange(x, 'b n q -> b (n q)')
 
-        b, n, device = *x.shape, x.device
+        b, n, gq, device = *x.shape, x.device
 
-        orig_seq = x.clone()
+        orig_seq = rearrange(x.clone(), 'b n q -> b (n q)')
+
+        t = torch.randint(0, n, (1,)).item()
+        q = torch.randint(0, gq, (1,)).item()
 
         rand_times = torch.empty(b, device = device).uniform_(0, 1)
-        batched_randperm = torch.rand((b, n), device = device).argsort(dim = -1).float()
+        batched_randperm = torch.rand((b, n - t), device = device).argsort(dim = -1).float()
 
         rand_probs = self.schedule_fn(rand_times)
-        num_tokens_mask = (rand_probs * n).clamp(min = 1.)
+        num_tokens_mask = (rand_probs * (n - t)).clamp(min = 1.)
         mask = batched_randperm < rearrange(num_tokens_mask, 'b -> b 1')
 
         # to ensure all tokens produce embeddings, instead of just the ones with [mask] input, as done in seminal BERT MLM paper
@@ -723,12 +725,22 @@ class SoundStorm(nn.Module):
 
         if self.random_token_prob > 0. and coin_flip():
             random_token_prob_mask = get_mask_subset_prob(replace_mask_id_mask, self.random_token_prob * frac_seq_left)
-            random_tokens = torch.randint(0, self.num_tokens, (b, n), device = device)
+            random_tokens = torch.randint(0, self.num_tokens, (b, n - t), device = device)
 
-            x = torch.where(random_token_prob_mask, random_tokens, x)
+            x[:, t:, q] = torch.where(random_token_prob_mask, random_tokens, x[:, t:, q])
             replace_mask_id_mask &= ~random_token_prob_mask
 
-        masked = torch.where(replace_mask_id_mask, self.mask_id, x)
+        masked = torch.where(replace_mask_id_mask, self.mask_id, x[:, t:, q])
+        masked = rearrange(torch.cat((x[:, :t, q], masked), dim=1), 'b n -> b n 1')
+        masked = torch.cat((x[:, :, :q], masked, x[:, :, q+1:]), dim=2)
+        masked = rearrange(masked, 'b n q -> b (n q)')
+
+        prompt_mask = torch.full((b, t), False, device=device)
+        lower_quantizers_mask = torch.full((b, n, q), False, device=device)
+        upper_quantizers_mask = torch.full((b, n, (gq - q - 1)), True, device=device)
+        mask = rearrange(torch.cat((prompt_mask, mask), dim=1), 'b n -> b n 1')
+        mask = torch.cat((lower_quantizers_mask, mask, upper_quantizers_mask), dim=2)
+        mask = rearrange(mask, 'b n q -> b (n q)')
 
         # self conditioning
 
