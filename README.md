@@ -109,6 +109,7 @@ generated_audio = model.generate(seconds = 30, batch_size = 2)  # generate 30 se
 - [x] default flash attention to true
 - [x] remove batchnorm, and just use layernorm, but after the swish (as in normformer paper)
 
+- [ ] add an option to mask out attention to padding (variable lengthed semantic) - should work as is though
 - [ ] option to return list of audio files when generating
 - [ ] turn it into a command line tool
 - [ ] add cross attention and adaptive layernorm conditioning
