@@ -132,7 +132,8 @@ class Attend(nn.Module):
         kv_einsum_eq = 'b j d' if k.ndim == 3 else 'b h j d'
 
         if self.flash:
-            return self.flash_attn(q, k, v, mask = mask, attn_bias = attn_bias)
+            assert not exists(attn_bias)
+            return self.flash_attn(q, k, v, mask = mask)
 
         # similarity
 
