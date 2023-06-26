@@ -19,6 +19,7 @@ from soundstorm_pytorch.attend import Attend
 from spear_tts_pytorch import TextToSemantic
 
 from audiolm_pytorch import SoundStream
+from audiolm_pytorch import HubertWithKmeans, FairseqVQWav2Vec
 
 from tqdm import tqdm
 
@@ -512,6 +513,7 @@ class SoundStorm(nn.Module):
         *,
         soundstream: Optional[SoundStream] = None,
         spear_tts_text_to_semantic: Optional[TextToSemantic] = None,
+        wav2vec: Optional[Union[HubertWithKmeans, FairseqVQWav2Vec]] = None,
         steps = 18,
         self_cond = False,
         self_cond_train_prob = 0.75,
@@ -558,10 +560,20 @@ class SoundStorm(nn.Module):
         self.text_to_semantic = spear_tts_text_to_semantic
 
         if exists(spear_tts_text_to_semantic) and exists(spear_tts_text_to_semantic.wav2vec):
+            assert not exists(wav2vec), 'wav2vec model already supplied from the TextToSemantic instance from SpearTTS'
             assert not (exists(wav2vec_downsample_factor) or exists(wav2vec_target_sample_hz)), 'wav2vec downsample factor and sampling freq being auto-set from the text-to-semantic module passed in, as it contains the wav2vec instance'
+
             self.wav2vec = spear_tts_text_to_semantic.wav2vec
             self.wav2vec_target_sample_hz = maybe_wav2vec.target_sample_hz
             self.wav2vec_downsample_factor = maybe_wav2vec.downsample_factor
+
+        elif exists(wav2vec):
+            assert not (exists(wav2vec_downsample_factor) or exists(wav2vec_target_sample_hz)), 'wav2vec downsample factor and sampling freq being auto-set from the text-to-semantic module passed in, as it contains the wav2vec instance'
+
+            self.wav2vec = wav2vec
+            self.wav2vec_target_sample_hz = wav2vec.target_sample_hz
+            self.wav2vec_downsample_factor = wav2vec.downsample_factor
+
         else:
             self.wav2vec = None
             self.wav2vec_target_sample_hz = wav2vec_target_sample_hz
@@ -814,6 +826,16 @@ class SoundStorm(nn.Module):
         # if raw audio passed in, convert to residual quantized vectors
 
         is_raw_audio = x.dtype == torch.float
+
+        # if semantic token ids not supplied and conditioning is indicated
+        # see if wav2vec and raw audio is available
+
+        if self.should_condition and not exists(cond_semantic_token_ids) and is_raw_audio:
+            with torch.no_grad():
+                self.wav2vec.eval()
+                cond_semantic_token_ids = self.wav2vec(x, flatten = False)
+
+        # derive residual vector quantized ids if raw audio passed in
 
         if is_raw_audio:
             assert exists(self.soundstream)
