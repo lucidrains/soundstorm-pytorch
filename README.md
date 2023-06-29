@@ -100,6 +100,42 @@ loss.backward()
 generated_audio = model.generate(seconds = 30, batch_size = 2)  # generate 30 seconds of audio (it will calculate the length in seconds based off the sampling frequency and cumulative downsamples in the soundstream passed in above)
 ```
 
+Complete text-to-speech will rely on a trained `TextToSemantic` encoder / decoder transformer. You will then load the weights and pass it into the `SoundStorm` as `spear_tts_text_to_semantic`
+
+```python
+from spear_tts_pytorch import TextToSemantic
+
+text_to_semantic = TextToSemantic(
+    dim = 512,
+    source_depth = 12,
+    target_depth = 12,
+    num_text_token_ids = 50000,
+    num_semantic_token_ids = 20000,
+    use_openai_tokenizer = True
+)
+
+# load the trained text-to-semantic transformer
+
+text_to_semantic.load_state_dict(torch.load('/path/to/trained/model.pt'))
+
+# pass it into the soundstorm
+
+model = SoundStorm(
+    conformer,
+    soundstream = soundstream,
+    spear_tts_text_to_semantic = text_to_semantic
+).cuda()
+
+# and now you can generate state-of-the-art speech
+
+generated_speech = model.generate(
+    texts = [
+        'the rain in spain stays mainly in the plain',
+        'the quick brown fox jumps over the lazy dog'
+    ]
+) # (2, n) - raw waveform decoded from soundstream
+```
+
 ## Todo
 
 - [x] integrate soundstream

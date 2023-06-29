@@ -12,7 +12,8 @@ from einops import rearrange, reduce, repeat, unpack, pack
 from einops.layers.torch import Rearrange, EinMix
 
 from beartype import beartype
-from beartype.typing import Union, Dict, Optional
+from beartype.door import is_bearable
+from beartype.typing import Union, Dict, Optional, List, Optional
 
 from soundstorm_pytorch.attend import Attend
 
@@ -657,11 +658,13 @@ class SoundStorm(nn.Module):
 
             if exists(spear_tts_text_to_semantic):
                 self.semantic_token_emb = spear_tts_text_to_semantic.semantic_token_emb
-                self.semantic_cond_to_model_dim = nn.Linear(spear_tts_text_to_semantic, net.dim)
-                self.semantic_pad_id = spear_tts_text_to_semantic.semantic_pad_id
+                self.num_semantic_token_ids = spear_tts_text_to_semantic.num_semantic_token_ids
+                self.semantic_cond_to_model_dim = nn.Linear(spear_tts_text_to_semantic.dim, net.dim)
+                self.semantic_pad_id = spear_tts_text_to_semantic.pad_id.get('speech')
             else:
                 assert exists(num_semantic_token_ids), 'if you are conditioning, you must pass in the number of semantic token ids'
                 self.semantic_token_emb = nn.Embedding(num_semantic_token_ids, dim)
+                self.num_semantic_token_ids = num_semantic_token_ids
                 self.semantic_cond_to_model_dim = nn.Identity()
                 self.semantic_pad_id = semantic_pad_id
 
@@ -720,21 +723,33 @@ class SoundStorm(nn.Module):
         self,
         num_latents = None,
         *,
+        texts: Optional[Union[List[str], Tensor]] = None,
         cond_semantic_token_ids = None,
         seconds = None,
         batch_size = None,
         start_temperature = 1.,
         filter_thres = 0.7,
         noise_level_scale = 1.,
+        text_to_semantic_generate_kwargs: dict = {},
         **kwargs
     ):
+
+        if not exists(cond_semantic_token_ids):
+            assert exists(texts) and exists(self.text_to_semantic)
+
+            if is_bearable(texts, List[str]):
+                assert exists(self.text_to_semantic.tokenizer_encode)
+                texts = self.text_to_semantic.tokenizer_encode(texts)
+                texts = texts.to(self.device)
+
+            cond_semantic_token_ids = self.text_to_semantic.generate(
+                texts,
+                source_type = 'text',
+                target_type = 'speech',
+                **text_to_semantic_generate_kwargs
+            )
+
         assert not (exists(cond_semantic_token_ids) ^ self.should_condition), 'you either have text-conditioning turned on and have not passed in any conditioning semantic token ids, or vice versa'
-
-        assert exists(num_latents) ^ exists(seconds)
-
-        if not exists(num_latents):
-            assert exists(self.soundstream), 'soundstream must be passed in to generate in seconds'
-            num_latents = (seconds * self.soundstream.target_sample_hz) //  self.soundstream.seq_len_multiple_of
 
        # maybe condition
 
@@ -748,6 +763,14 @@ class SoundStorm(nn.Module):
         else:
             sample_one = not exists(batch_size)
             batch_size = default(batch_size, 1)
+
+            assert exists(num_latents) ^ exists(seconds)
+
+            if not exists(num_latents):
+                assert exists(self.soundstream), 'soundstream must be passed in to generate in seconds'
+                num_latents = (seconds * self.soundstream.target_sample_hz) //  self.soundstream.seq_len_multiple_of
+
+        # determine sequence length
 
         seq_len = num_latents * self.grouped_quantizers * self.num_quantizers
 
