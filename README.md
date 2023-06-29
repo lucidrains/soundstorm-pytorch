@@ -102,6 +102,8 @@ generated_audio = model.generate(seconds = 30, batch_size = 2)  # generate 30 se
 
 Complete text-to-speech will rely on a trained `TextToSemantic` encoder / decoder transformer. You will then load the weights and pass it into the `SoundStorm` as `spear_tts_text_to_semantic`
 
+This is a work-in-progress, as `spear-tts-pytorch` only has the model architecture complete, and not the pretraining + pseudo-labeling + backtranslation logic.
+
 ```python
 from spear_tts_pytorch import TextToSemantic
 
