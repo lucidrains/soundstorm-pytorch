@@ -118,7 +118,7 @@ text_to_semantic = TextToSemantic(
 
 # load the trained text-to-semantic transformer
 
-text_to_semantic.load_state_dict(torch.load('/path/to/trained/model.pt'))
+text_to_semantic.load('/path/to/trained/model.pt')
 
 # pass it into the soundstorm
 
