@@ -844,6 +844,12 @@ class SoundStorm(nn.Module):
 
         with context():
             mask = token_ids != self.semantic_pad_id
+
+            # also remove the eos semantic token id
+
+            if exists(self.text_to_semantic) and self.text_to_semantic.autoset_eos_id['speech']:
+                mask &= token_ids != self.num_semantic_token_ids
+
             token_ids = token_ids.masked_fill(~mask, 0)
 
             semantic_tokens = self.semantic_token_emb(token_ids)
