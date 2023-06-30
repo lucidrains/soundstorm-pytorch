@@ -983,13 +983,18 @@ class SoundStorm(nn.Module):
         masked = torch.where(replace_mask_id_mask, self.mask_id, x[:, t:, q])
         masked = rearrange(torch.cat((x[:, :t, q], masked), dim=1), 'b n -> b n 1')
         masked = torch.cat((x[:, :, :q], masked, x[:, :, q+1:]), dim=2)
+        masked[:, t:, q+1:] = self.mask_id
         masked = rearrange(masked, 'b n q -> b (n q)')
 
         prompt_mask = torch.full((b, t), False, device=device)
         lower_quantizers_mask = torch.full((b, n, q), False, device=device)
         upper_quantizers_mask = torch.full((b, n, (gq - q - 1)), True, device=device)
-        mask = rearrange(torch.cat((prompt_mask, mask), dim=1), 'b n -> b n 1')
+        # upper_quantizers_mask in prompt also should be False
+        upper_quantizers_mask[:, :t, :] = False
+        mask = rearrange(torch.cat((prompt_mask, replace_mask_id_mask), dim=1), 'b n -> b n 1')
         mask = torch.cat((lower_quantizers_mask, mask, upper_quantizers_mask), dim=2)
+        # above is the right mask, but when compute loss, only consider level q
+        mask[:, :, q+1:]=False
         mask = rearrange(mask, 'b n q -> b (n q)')
 
         # self conditioning
