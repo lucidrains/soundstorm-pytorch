@@ -150,6 +150,13 @@ class Attend(nn.Module):
             causal_mask = self.get_mask(q_len, k_len, device)
             sim = sim.masked_fill(causal_mask, -torch.finfo(sim.dtype).max)
 
+        # key padding mask
+
+        if exists(mask):
+            if mask.ndim != 4:
+                mask = rearrange(mask, 'b j -> b 1 1 j')
+            sim = sim.masked_fill(~mask, -torch.finfo(sim.dtype).max)
+
         # attention
 
         attn = sim.softmax(dim=-1)
