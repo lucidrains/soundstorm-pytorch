@@ -47,7 +47,7 @@ model = SoundStorm(
 
 # get your pre-encoded codebook ids from the soundstream from a lot of raw audio
 
-codes = torch.randint(0, 1024, (2, 1024))
+codes = torch.randint(0, 1024, (2, 1024, 12)) # (batch, seq, num residual VQ)
 
 # do the below in a loop for a ton of data
 
