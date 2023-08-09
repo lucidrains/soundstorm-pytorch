@@ -734,7 +734,7 @@ class SoundStorm(nn.Module):
         **kwargs
     ):
 
-        if not exists(cond_semantic_token_ids):
+        if self.should_condition and not exists(cond_semantic_token_ids):
             assert exists(texts) and exists(self.text_to_semantic)
 
             if is_bearable(texts, List[str]):
@@ -882,7 +882,6 @@ class SoundStorm(nn.Module):
             # eventually should add self attention masking to conformer, and calculate the correct number of masked tokens per variable lengthed batch row
 
             cond_tokens = cond_tokens.masked_fill(~rearrange(mask, '... -> ... 1'), 0.)
-
 
         # now need to interpolate the conditioning tokens
         # to align semantic and vector quantized tokens, time-wise
