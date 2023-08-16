@@ -4,3 +4,6 @@ from soundstorm_pytorch.soundstorm import (
     ConformerWrapper,
     Conformer
 )
+from soundstorm_pytorch.trainer import (
+    SoundStormTrainer
+)
