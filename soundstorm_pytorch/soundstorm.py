@@ -3,6 +3,7 @@ from random import random
 from functools import wraps
 from contextlib import nullcontext
 from collections import namedtuple
+from pathlib import Path
 
 import torch
 from torch import Tensor, nn, einsum
@@ -670,8 +671,6 @@ class SoundStorm(nn.Module):
 
         # detect token critic settings
 
-        assert not (self_token_critic and exists(token_critic))
-
         self.num_quantizers = net.num_quantizers
         self.grouped_quantizers = net.grouped_quantizers
 
@@ -717,6 +716,15 @@ class SoundStorm(nn.Module):
     def device(self):
         return next(self.net.parameters()).device
 
+    def load(self, path, strict = True):
+        # Return pkg so that if this function gets called from within a Trainer function call,
+        # the trainer can also access the package loaded from the checkpoint.
+        path = Path(path)
+        assert path.exists()
+        pkg = torch.load(str(path), map_location = 'cpu')
+        self.load_state_dict(pkg['model'], strict = strict)
+        return pkg
+
     @torch.no_grad()
     @eval_decorator
     def generate(
@@ -725,6 +733,7 @@ class SoundStorm(nn.Module):
         *,
         texts: Optional[Union[List[str], Tensor]] = None,
         cond_semantic_token_ids = None,
+        prompt_acoustic_token_ids = None,
         seconds = None,
         batch_size = None,
         start_temperature = 1.,
@@ -751,7 +760,7 @@ class SoundStorm(nn.Module):
 
         assert not (exists(cond_semantic_token_ids) ^ self.should_condition), 'you either have text-conditioning turned on and have not passed in any conditioning semantic token ids, or vice versa'
 
-       # maybe condition
+        # maybe condition
 
         cond_tokens = self.maybe_get_condition(cond_semantic_token_ids)
 
@@ -768,11 +777,12 @@ class SoundStorm(nn.Module):
 
             if not exists(num_latents):
                 assert exists(self.soundstream), 'soundstream must be passed in to generate in seconds'
-                num_latents = (seconds * self.soundstream.target_sample_hz) //  self.soundstream.seq_len_multiple_of
+                num_latents = (seconds * self.soundstream.target_sample_hz) // self.soundstream.seq_len_multiple_of
 
         # determine sequence length
 
-        seq_len = num_latents * self.grouped_quantizers * self.num_quantizers
+        num_effective_quantizers = self.grouped_quantizers * self.num_quantizers
+        seq_len = num_latents * num_effective_quantizers
 
         # device and time
 
@@ -786,6 +796,23 @@ class SoundStorm(nn.Module):
 
         seq = torch.full(shape, self.mask_id, device = device)
         mask = torch.full(shape, True, device = device)
+        
+        # include prompt tokens unmasked as the sequence prefix, starting from the lowest quantizer
+
+        prompt_mask = None
+        
+        if exists(prompt_acoustic_token_ids):
+            prompt_len, num_prompt_quantizers = prompt_acoustic_token_ids.shape[1:]
+            assert num_prompt_quantizers <= num_effective_quantizers, 'number of prompt quantizers cannot be greater than the number of quantizers'
+            
+            seq = rearrange(seq, 'b (n q) -> b n q', q = num_effective_quantizers)
+            prompt_mask = rearrange(mask, 'b (n q) -> b n q', q = num_effective_quantizers)
+            
+            seq[:, :prompt_len, :num_prompt_quantizers] = prompt_acoustic_token_ids
+            prompt_mask[:, :prompt_len, :num_prompt_quantizers] = False
+            
+            seq = rearrange(seq, 'b n q -> b (n q)', q = num_effective_quantizers)
+            prompt_mask = rearrange(prompt_mask, 'b n q -> b (n q)', q = num_effective_quantizers)
 
         # slowly demask
 
@@ -817,8 +844,6 @@ class SoundStorm(nn.Module):
             annealing_scale = steps_until_x0 / self.steps
             temperature = start_temperature * annealing_scale
 
-            probs = (logits / max(temperature, 1e-3)).softmax(dim = -1)
-
             sampled_ids = gumbel_sample(logits, temperature = max(temperature, 1e-3))
 
             seq = torch.where(mask, sampled_ids, seq)
@@ -840,6 +865,10 @@ class SoundStorm(nn.Module):
 
             mask_indices = scores.topk(mask_num_tokens, dim = -1).indices
             mask = torch.zeros_like(scores, dtype = torch.bool).scatter(1, mask_indices, True)
+            
+            if exists(prompt_mask):
+                mask = mask & prompt_mask
+            
             seq = seq.masked_fill(mask, self.mask_id)
 
         out = seq
@@ -946,11 +975,11 @@ class SoundStorm(nn.Module):
 
         cond_tokens = self.maybe_get_condition(cond_semantic_token_ids, length = x.shape[-2])
 
-        # prepare masking
+        # prepare masking, selecting the prompt from a random prefix
 
         orig_seq = rearrange(x.clone(), 'b n q -> b (n q)')
 
-        t = torch.randint(0, n, (1,)).item()
+        t = torch.randint(0, n - 1, (1,)).item()
         q = torch.randint(0, gq, (1,)).item()
 
         rand_times = torch.empty(b, device = device).uniform_(0, 1)
@@ -981,8 +1010,8 @@ class SoundStorm(nn.Module):
 
         masked = torch.where(replace_mask_id_mask, self.mask_id, x[:, t:, q])
         masked = rearrange(torch.cat((x[:, :t, q], masked), dim=1), 'b n -> b n 1')
-        masked = torch.cat((x[:, :, :q], masked, x[:, :, q+1:]), dim=2)
-        masked[:, t:, q+1:] = self.mask_id
+        masked = torch.cat((x[:, :, :q], masked, x[:, :, q + 1:]), dim=2)
+        masked[:, t:, q + 1:] = self.mask_id
         masked = rearrange(masked, 'b n q -> b (n q)')
 
         prompt_mask = torch.full((b, t), False, device=device)
@@ -991,9 +1020,9 @@ class SoundStorm(nn.Module):
         # upper_quantizers_mask in prompt also should be False
         upper_quantizers_mask[:, :t, :] = False
         mask = rearrange(torch.cat((prompt_mask, replace_mask_id_mask), dim=1), 'b n -> b n 1')
-        mask = torch.cat((lower_quantizers_mask, mask, upper_quantizers_mask), dim=2)
-        # above is the right mask, but when compute loss, only consider level q
-        mask[:, :, q+1:]=False
+        mask = torch.cat((lower_quantizers_mask, mask, upper_quantizers_mask), dim = 2)
+        # above is the right mask, but when computing loss, only consider level q
+        mask[:, :, q + 1:] = False
         mask = rearrange(mask, 'b n q -> b (n q)')
 
         # self conditioning
