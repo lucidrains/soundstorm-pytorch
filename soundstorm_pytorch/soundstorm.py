@@ -979,7 +979,7 @@ class SoundStorm(nn.Module):
 
         orig_seq = rearrange(x.clone(), 'b n q -> b (n q)')
 
-        t = torch.randint(0, n - 1, (1,)).item()
+        t = torch.randint(0, n, (1,)).item()
         q = torch.randint(0, gq, (1,)).item()
 
         rand_times = torch.empty(b, device = device).uniform_(0, 1)
