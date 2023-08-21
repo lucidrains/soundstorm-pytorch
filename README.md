@@ -148,12 +148,12 @@ generated_speech = model.generate(
 - [x] just copy conformer over and redo shaw's relative positional embedding with rotary embedding. nobody uses shaw anymore.
 - [x] default flash attention to true
 - [x] remove batchnorm, and just use layernorm, but after the swish (as in normformer paper)
+- [x] trainer with accelerate - thanks to @lucasnewman
 
 - [ ] add an option to mask out attention to padding (variable lengthed semantic) - should work as is though
 - [ ] option to return list of audio files when generating
 - [ ] turn it into a command line tool
 - [ ] add cross attention and adaptive layernorm conditioning
-- [ ] trainer with accelerate
 
 ## Citations
 
