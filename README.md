@@ -12,13 +12,13 @@ They basically applied <a href="https://arxiv.org/abs/2202.04200">MaskGiT</a> to
 
 - <a href="https://stability.ai/">Stability</a> and <a href="https://huggingface.co/">🤗 Huggingface</a> for their generous sponsorships to work on and open source cutting edge artificial intelligence research
 
+- <a href="https://github.com/lucasnewman">Lucas Newman</a> for numerous contirbutions, including the initial training code, acoustic prompting logic, per-level quantizer decoding!
+
 - <a href="https://huggingface.co/docs/accelerate/index">🤗 Accelerate</a> for providing a simple and powerful solution for training
 
 - <a href="https://einops.rocks/">Einops</a> for the indispensable abstraction that makes building neural networks fun, easy, and uplifting
 
 - <a href="https://github.com/stevenhillis">Steven Hillis</a> for submitting the correct masking strategy and for verifying that the repository works! 🙏
-
-- <a href="https://github.com/lucasnewman">Lucas Newman</a> for the initial training code and the acoustic prompting logic!
 
 ## Install
 
