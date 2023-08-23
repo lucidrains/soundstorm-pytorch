@@ -429,14 +429,19 @@ class Conformer(nn.Module):
                 attn_flash = attn_flash
             ))
 
-    def forward(self, x):
+    def forward(self, x, mask = None):
         seq_len = x.shape[-2]
 
         rotary_emb = self.rotary_emb(seq_len) if exists(self.rotary_emb) else None
         attn_bias = self.rel_pos_bias(seq_len) if exists(self.rel_pos_bias) else None
 
         for block in self.layers:
-            x = block(x, rotary_emb = rotary_emb, attn_bias = attn_bias)
+            x = block(
+                x,
+                mask = mask,
+                rotary_emb = rotary_emb,
+                attn_bias = attn_bias
+            )
 
         return x
 
@@ -506,6 +511,8 @@ class ConformerWrapper(nn.Module):
     def forward(
         self,
         x,
+        *,
+        mask = None,
         cond = None,
         sum_embeds = None,
         return_embeddings = False,
@@ -541,7 +548,7 @@ class ConformerWrapper(nn.Module):
 
             x = x + cond
 
-        x = self.conformer(x)
+        x = self.conformer(x, mask = mask)
         embeds = self.heads(x)
 
         if return_embeddings or not exists(self.to_logits):
@@ -733,6 +740,7 @@ class SoundStorm(nn.Module):
         self,
         num_latents = None,
         *,
+        mask = None,
         texts: Optional[Union[List[str], Tensor]] = None,
         cond_semantic_token_ids = None,
         prompt_acoustic_token_ids = None,
@@ -745,6 +753,7 @@ class SoundStorm(nn.Module):
         text_to_semantic_generate_kwargs: dict = {},
         **kwargs
     ):
+        seq_mask = mask
 
         if self.should_condition and not exists(cond_semantic_token_ids):
             assert exists(texts) and exists(self.text_to_semantic)
@@ -836,6 +845,7 @@ class SoundStorm(nn.Module):
 
                 logits, embeds = self.net(
                     seq,
+                    mask = seq_mask,
                     cond = cond_tokens,
                     sum_embeds = self_cond,
                     return_logits_and_embeddings = True,
@@ -973,6 +983,7 @@ class SoundStorm(nn.Module):
         self,
         x,
         *,
+        mask = None,
         cond_semantic_token_ids = None,
         only_train_generator = False,
         only_train_critic = False,
@@ -1002,6 +1013,13 @@ class SoundStorm(nn.Module):
         # shape
 
         b, n, gq, device = *x.shape, x.device
+
+        assert gq == (self.num_quantizers * self.grouped_quantizers), f'codes passed in has {gq} quantizers (x groups) but the conformer wrapper was set to num_quantizers {self.num_quantizers} and grouped_quantizers {self.grouped_quantizers}'
+
+        # mask was used below, rename input mask as seq_mask
+        # todo: rename mask used for mask diffusion later
+
+        seq_mask = mask
 
         # maybe condition
 
@@ -1049,11 +1067,15 @@ class SoundStorm(nn.Module):
         prompt_mask = torch.full((b, t), False, device=device)
         lower_quantizers_mask = torch.full((b, n, q), False, device=device)
         upper_quantizers_mask = torch.full((b, n, (gq - q - 1)), True, device=device)
+
         # upper_quantizers_mask in prompt also should be False
+
         upper_quantizers_mask[:, :t, :] = False
         mask = rearrange(torch.cat((prompt_mask, replace_mask_id_mask), dim=1), 'b n -> b n 1')
         mask = torch.cat((lower_quantizers_mask, mask, upper_quantizers_mask), dim = 2)
+
         # above is the right mask, but when computing loss, only consider level q
+
         mask[:, :, q + 1:] = False
         mask = rearrange(mask, 'b n q -> b (n q)')
 
@@ -1064,7 +1086,13 @@ class SoundStorm(nn.Module):
 
             if sample_prob(self.self_cond_train_prob):
                 with torch.no_grad():
-                    self_cond = self.net(masked, cond = cond_tokens, return_embeddings = True, **kwargs).detach()
+                    self_cond = self.net(
+                        masked,
+                        cond = cond_tokens,
+                        return_embeddings = True,
+                        mask = seq_mask,
+                        **kwargs
+                    ).detach()
 
             kwargs.update(sum_embeds = self.to_self_cond(self_cond))
 
@@ -1073,7 +1101,12 @@ class SoundStorm(nn.Module):
         context = torch.no_grad if only_train_critic else nullcontext
 
         with context():
-            logits = self.net(masked, cond = cond_tokens, **kwargs)
+            logits = self.net(
+                masked,
+                mask = seq_mask,
+                cond = cond_tokens,
+                **kwargs
+            )
 
         # cross entropy loss
 
