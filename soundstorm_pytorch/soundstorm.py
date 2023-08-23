@@ -79,6 +79,7 @@ def coin_flip():
 
 # tensor helpers
 
+@beartype
 def get_mask_subset_prob(
     mask: Tensor,
     prob: Union[float, Tensor],
