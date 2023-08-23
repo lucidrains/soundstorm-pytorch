@@ -34,7 +34,7 @@ from soundstorm_pytorch import SoundStorm, ConformerWrapper
 
 conformer = ConformerWrapper(
     codebook_size = 1024,
-    num_quantizers = 4,
+    num_quantizers = 12,
     conformer = dict(
         dim = 512,
         depth = 2
@@ -69,7 +69,7 @@ from soundstorm_pytorch import SoundStorm, ConformerWrapper, Conformer, SoundStr
 
 conformer = ConformerWrapper(
     codebook_size = 1024,
-    num_quantizers = 4,
+    num_quantizers = 12,
     conformer = dict(
         dim = 512,
         depth = 2
