@@ -896,7 +896,7 @@ class SoundStorm(nn.Module):
                 
                 seq = torch.where(sample_mask, sampled_ids, seq)
                 
-                if mask_num_tokens == 0:
+                if (mask_num_tokens == 0).all():
                     continue
 
                 if exists(self.token_critic):
