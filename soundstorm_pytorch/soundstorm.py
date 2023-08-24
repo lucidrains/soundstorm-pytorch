@@ -809,7 +809,7 @@ class SoundStorm(nn.Module):
 
         device = self.device
 
-        times = torch.linspace(0., 1., self.steps + 1)
+        times = torch.linspace(0., 1., self.steps + 1, device = device)
 
         # sequence starts off as all masked
         # todo: find a better name for sequence mask vs mask for mask diffusion
@@ -853,16 +853,15 @@ class SoundStorm(nn.Module):
 
         all_mask_num_tokens = (rand_mask_probs * seq_len_from_mask).long()
 
-        mask_num_tokens_for_q_level = [all_mask_num_tokens if q < num_full_sampling_levels else torch.zeros((self.steps, batch_size), dtype = torch.long, device = device) for q in range(num_effective_quantizers)]
-
         # self conditioning
 
         has_self_cond = self.self_cond
         last_embed = self.null_embed if has_self_cond else None
         
         for q_level in range(num_effective_quantizers):
-            
-            for mask_num_tokens, steps_until_x0 in tqdm(zip(mask_num_tokens_for_q_level[q_level], reversed(range(self.steps))), total = self.steps):
+            mask_num_tokens_for_q_level = all_mask_num_tokens if q_level < num_full_sampling_levels else torch.zeros((1, batch_size), dtype = torch.long, device = device)
+
+            for mask_num_tokens, steps_until_x0 in tqdm(zip(mask_num_tokens_for_q_level, reversed(range(self.steps))), total = self.steps):
 
                 self_cond = self.to_self_cond(last_embed) if has_self_cond else None
 
@@ -896,6 +895,9 @@ class SoundStorm(nn.Module):
                     sample_mask = mask
                 
                 seq = torch.where(sample_mask, sampled_ids, seq)
+                
+                if mask_num_tokens == 0:
+                    continue
 
                 if exists(self.token_critic):
                     scores = self.token_critic(seq)
@@ -906,7 +908,6 @@ class SoundStorm(nn.Module):
                     scores = scores.gather(2, rearrange(sampled_ids, 'b n -> b n 1'))
                     scores = rearrange(scores, 'b n 1 -> b n')
 
-                mask_indices = torch.zeros(batch_size, 1, dtype = torch.long, device = device)
                 mask = torch.zeros_like(scores, dtype = torch.bool)
                 
                 # mask based on highest score
