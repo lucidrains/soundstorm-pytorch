@@ -1052,10 +1052,16 @@ class SoundStorm(nn.Module):
 
         seq_mask = mask
 
-        if not exists(seq_mask) and exists(self.pad_id):
-            seq_mask = (x != self.pad_id).any(dim = -1)
-        elif not exists(seq_mask):
+        if not exists(seq_mask):
             seq_mask = torch.ones((b, n), device = device, dtype = torch.bool)
+
+        if exists(self.pad_id):
+            pad_mask = (x == self.pad_id).any(dim = -1)
+            seq_mask = seq_mask & ~pad_mask
+
+            if self.pad_id < 0:
+                # if using say -1 for padding
+                x = torch.where(rearrange(pad_mask, 'b n -> b n 1'), 0, x)
 
         # maybe condition
 
