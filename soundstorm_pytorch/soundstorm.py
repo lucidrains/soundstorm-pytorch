@@ -612,6 +612,7 @@ class SoundStorm(nn.Module):
         critic_loss_weight = 1.,
         num_semantic_token_ids = None,
         semantic_pad_id = -1,
+        pad_id = None,
         wav2vec_target_sample_hz = None,
         wav2vec_downsample_factor = None,
         codec_target_sample_hz = None,
@@ -625,6 +626,7 @@ class SoundStorm(nn.Module):
         dim = net.dim
         self.dim = dim
         self.num_tokens = net.codebook_size
+        self.pad_id = pad_id
 
         # set soundstream
 
@@ -1050,7 +1052,9 @@ class SoundStorm(nn.Module):
 
         seq_mask = mask
 
-        if not exists(seq_mask):
+        if not exists(seq_mask) and exists(self.pad_id):
+            seq_mask = (x != self.pad_id).any(dim = -1).squeeze(-1)
+        elif not exists(seq_mask):
             seq_mask = torch.ones((b, n), device = device, dtype = torch.bool)
 
         # maybe condition
