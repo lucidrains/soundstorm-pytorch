@@ -1053,7 +1053,7 @@ class SoundStorm(nn.Module):
         seq_mask = mask
 
         if not exists(seq_mask) and exists(self.pad_id):
-            seq_mask = (x != self.pad_id).any(dim = -1).squeeze(-1)
+            seq_mask = (x != self.pad_id).any(dim = -1)
         elif not exists(seq_mask):
             seq_mask = torch.ones((b, n), device = device, dtype = torch.bool)
 
