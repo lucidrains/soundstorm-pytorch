@@ -20,6 +20,8 @@ They basically applied <a href="https://arxiv.org/abs/2202.04200">MaskGiT</a> to
 
 - <a href="https://github.com/stevenhillis">Steven Hillis</a> for submitting the correct masking strategy and for verifying that the repository works! 🙏
 
+- <a href="https://github.com/lucasnewman">Lucas Newman</a> for basically training a small working Soundstorm with models across multiple repositories, showing it all works end-to-end. Models include <a href="https://github.com/lucidrains/audiolm-pytorch">SoundStream</a>, <a href="https://github.com/lucidrains/spear-tts-pytorch">Text-to-Semantic T5</a>, and finally the SoundStorm transformer here.
+
 ## Install
 
 ```bash
