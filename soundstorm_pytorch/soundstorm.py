@@ -762,6 +762,8 @@ class SoundStorm(nn.Module):
         noise_level_scale = 1.,
         num_full_sampling_levels = 1,
         text_to_semantic_generate_kwargs: dict = {},
+        spec_decode = False,
+        spec_decode_gamma = 5,
         **kwargs
     ):
         if self.should_condition and not exists(cond_semantic_token_ids):
@@ -776,6 +778,8 @@ class SoundStorm(nn.Module):
                 texts,
                 source_type = 'text',
                 target_type = 'speech',
+                spec_decode = spec_decode,
+                spec_decode_gamma = spec_decode_gamma,
                 **text_to_semantic_generate_kwargs
             )
 
