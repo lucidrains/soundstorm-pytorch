@@ -80,7 +80,7 @@ conformer = ConformerWrapper(
 
 soundstream = SoundStream(
     codebook_size = 1024,
-    rq_num_quantizers = 4,
+    rq_num_quantizers = 12,
     attn_window_size = 128,
     attn_depth = 2
 )
