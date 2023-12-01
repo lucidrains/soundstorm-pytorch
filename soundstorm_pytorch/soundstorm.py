@@ -221,7 +221,7 @@ class DepthWiseConv1d(nn.Module):
 
     def forward(self, x, mask = None):
         if exists(mask):
-            mask = mask[..., None]
+            mask = rearrange(mask, 'b n -> b 1 n')
             x = x.masked_fill(~mask, 0.)
 
         x = F.pad(x, self.padding)
