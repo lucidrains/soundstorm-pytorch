@@ -1,6 +1,6 @@
 <img src="./soundstorm.png" width="450px"></img>
 
-## Soundstorm - Pytorch (wip)
+## Soundstorm - Pytorch
 
 Implementation of <a href="https://arxiv.org/abs/2305.09636">SoundStorm</a>, Efficient Parallel Audio Generation from Google Deepmind, in Pytorch.
 
