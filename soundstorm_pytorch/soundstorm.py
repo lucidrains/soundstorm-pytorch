@@ -24,6 +24,8 @@ from spear_tts_pytorch import TextToSemantic
 from audiolm_pytorch import SoundStream
 from audiolm_pytorch import HubertWithKmeans, FairseqVQWav2Vec
 
+from gateloop_transformer import SimpleGateLoopLayer as GateLoop
+
 from tqdm import tqdm
 
 # helpers
@@ -383,10 +385,14 @@ class ConformerBlock(nn.Module):
         attn_flash = True,
         ff_dropout = 0.,
         conv_dropout = 0.,
-        conv_causal = False
+        conv_causal = False,
+        use_gateloop_layers = False
     ):
         super().__init__()
         self.ff1 = FeedForward(dim = dim, mult = ff_mult, dropout = ff_dropout)
+
+        self.gateloop = GateLoop(dim) if use_gateloop_layers else None
+
         self.attn = Attention(dim = dim, dim_head = dim_head, heads = heads, dropout = attn_dropout, flash = attn_flash)
         self.conv = ConformerConvModule(dim = dim, causal = conv_causal, expansion_factor = conv_expansion_factor, kernel_size = conv_kernel_size, dropout = conv_dropout)
         self.ff2 = FeedForward(dim = dim, mult = ff_mult, dropout = ff_dropout)
@@ -405,6 +411,10 @@ class ConformerBlock(nn.Module):
         attn_bias = None
     ):
         x = self.ff1(x) + x
+
+        if exists(self.gateloop):
+            x = self.gateloop(x) + x
+
         x = self.attn(x, mask = mask, rotary_emb = rotary_emb, attn_bias = attn_bias) + x
         x = self.conv(x, mask = mask) + x
         x = self.ff2(x) + x
@@ -429,7 +439,8 @@ class Conformer(nn.Module):
         conv_dropout = 0.,
         conv_causal = False,
         attn_flash = True,
-        t5_rel_pos_bias = False
+        t5_rel_pos_bias = False,
+        use_gateloop_layers = True
     ):
         super().__init__()
 
@@ -453,7 +464,8 @@ class Conformer(nn.Module):
                 ff_dropout = ff_dropout,
                 conv_dropout = conv_dropout,
                 conv_causal = conv_causal,
-                attn_flash = attn_flash
+                attn_flash = attn_flash,
+                use_gateloop_layers = use_gateloop_layers
             ))
 
     def forward(self, x, mask = None):
