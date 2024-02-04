@@ -953,7 +953,7 @@ class SoundStorm(nn.Module):
                 if not self.can_mask_prev_unmasked:
                     scores = scores.masked_fill(~mask, mask_value)
 
-                scores_sorted = scores.argsort(dim = -1, descending = True)
+                scores_sorted = scores.argsort(dim = -1, descending = True).argsort(dim = -1)
 
                 mask_num_tokens = rearrange(mask_num_tokens, 'b -> b 1')
 
