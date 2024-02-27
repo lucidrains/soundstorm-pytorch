@@ -97,7 +97,7 @@ def get_mask_subset_prob(
     logits = torch.rand((batch, seq), device = device)
     logits = logits.masked_fill(~mask, -1)
 
-    randperm = logits.argsort(dim = -1).float()
+    randperm = logits.argsort(dim = -1).argsort(dim = -1).float()
 
     num_padding = (~mask).sum(dim = -1, keepdim = True)
     randperm -= num_padding
