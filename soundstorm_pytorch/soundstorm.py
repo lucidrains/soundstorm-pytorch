@@ -15,7 +15,7 @@ from einops.layers.torch import Rearrange, EinMix
 
 from beartype import beartype
 from beartype.door import is_bearable
-from beartype.typing import Union, Dict, Optional, List, Optional
+from beartype.typing import Union, Dict, Optional, List, Optional, Any
 
 from soundstorm_pytorch.attend import Attend
 
@@ -494,7 +494,7 @@ class ConformerWrapper(nn.Module):
         *,
         codebook_size,
         num_quantizers,
-        conformer: Union[Conformer, Dict[str, any]],
+        conformer: Union[Conformer, Dict[str, Any]],
         grouped_quantizers = 1
     ):
         super().__init__()
