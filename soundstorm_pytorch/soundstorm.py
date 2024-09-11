@@ -530,6 +530,8 @@ class ConformerWrapper(nn.Module):
             Rearrange('b n (h d) -> b (n h) d', h = num_effective_quantizers)
         )
 
+        self.num_effective_quantizers = num_effective_quantizers
+
         # each quantizer codebook would require its own logits weight and bias matrices
         # the amazing einops makes this easy with 'EinMix'
 
@@ -579,6 +581,9 @@ class ConformerWrapper(nn.Module):
         x = self.embedding_proj(x)
 
         if exists(sum_embeds):
+            if sum_embeds.ndim == 3:
+                sum_embeds = reduce(sum_embeds, 'b (n h) d -> b n d', 'sum', h = self.num_effective_quantizers)
+
             x = x + sum_embeds
 
         if exists(cond):
