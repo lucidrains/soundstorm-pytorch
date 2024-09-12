@@ -1119,7 +1119,7 @@ class SoundStorm(nn.Module):
         rand_times = torch.empty(b, device = device).uniform_(0, 1)
         rand_probs = self.schedule_fn(rand_times)
 
-        mask = get_mask_subset_prob(mask, rand_probs)
+        mask = get_mask_subset_prob(mask, rand_probs, min_mask = 1)
 
         # random quantizer position, in groups
 
