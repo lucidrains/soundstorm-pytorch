@@ -95,8 +95,10 @@ class Attend(nn.Module):
 
         if exists(attn_bias):
             mask_value = -torch.finfo(q.dtype).max // 2
-            causal_mask = self.get_mask(q_len, k_len, device)
-            attn_bias = attn_bias.masked_fill(causal_mask, mask_value)
+
+            if causal:
+                causal_mask = self.get_mask(q_len, k_len, device)
+                attn_bias = attn_bias.masked_fill(causal_mask, mask_value)
 
             if exists(mask):
                 attn_bias = attn_bias.masked_fill(~mask, mask_value)
