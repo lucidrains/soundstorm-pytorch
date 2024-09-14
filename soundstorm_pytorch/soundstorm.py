@@ -649,7 +649,7 @@ class SoundStorm(nn.Module):
         no_replace_prob = 0.15,          # which percentage of the tokens masked will stay the same, done in original MLM paper
         random_token_prob = 0.1,         # which percentage of tokens to be replaced with random token, done in original MLM paper
         schedule = 'linear',
-        can_mask_prev_unmasked = False,  # when unmasking, whether it can remask previously unmasked        
+        can_mask_prev_unmasked = True,   # when unmasking, whether it can remask previously unmasked
         self_token_critic = False,       # https://aclanthology.org/2021.naacl-main.409/
         critic_loss_weight = 1.,
         num_semantic_token_ids = None,
@@ -899,6 +899,8 @@ class SoundStorm(nn.Module):
 
         all_mask_num_tokens = (rand_mask_probs * seq_len_from_mask).long()
 
+        prev_mask = None
+
         # self conditioning
 
         has_self_cond = self.self_cond
@@ -962,14 +964,17 @@ class SoundStorm(nn.Module):
 
                 scores = scores.masked_fill(~seq_mask_with_quantizer, mask_value)
 
-                if not self.can_mask_prev_unmasked:
-                    scores = scores.masked_fill(~mask, mask_value)
+                if not self.can_mask_prev_unmasked and exists(prev_mask):
+                    scores = scores.masked_fill(~prev_mask, mask_value)
 
                 scores_sorted = scores.argsort(dim = -1, descending = True).argsort(dim = -1)
 
                 mask_num_tokens = rearrange(mask_num_tokens, 'b -> b 1')
 
                 mask = scores_sorted < mask_num_tokens
+
+                if not self.can_mask_prev_unmasked:
+                    prev_mask = mask.clone()
 
                 mask = rearrange(mask, 'b (n q) -> b n q', q = num_effective_quantizers)
                 
@@ -982,7 +987,7 @@ class SoundStorm(nn.Module):
                 
                 if q_level > 0:
                     mask[:, :, :q_level] = False
-                
+
                 mask = rearrange(mask, 'b n q -> b (n q)', q = num_effective_quantizers)
 
                 if exists(prompt_mask):
