@@ -1,12 +1,14 @@
+from __future__ import annotations
+
 from pathlib import Path
 import re
 from shutil import rmtree
 
 from beartype import beartype
-from beartype.typing import Optional
 
 import torch
 from torch import nn
+from torch.nn import Module
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import Dataset, random_split
 
@@ -58,7 +60,7 @@ def checkpoint_num_steps(checkpoint_path):
     return int(results[-1])
 
 
-class SoundStormTrainer(nn.Module):
+class SoundStormTrainer(Module):
     @beartype
     def __init__(
         self,
@@ -67,7 +69,7 @@ class SoundStormTrainer(nn.Module):
         num_train_steps,
         num_warmup_steps,
         batch_size,
-        dataset: Optional[Dataset] = None,
+        dataset: Dataset | None = None,
         only_train_generator = False,
         only_train_critic = False,
         lr = 3e-4,
