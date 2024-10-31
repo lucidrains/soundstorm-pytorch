@@ -230,3 +230,12 @@ generated_speech = model.generate(
     primaryClass = {cs.CL}
 }
 ```
+
+```bibtex
+@inproceedings{Zhou2024ValueRL,
+    title   = {Value Residual Learning For Alleviating Attention Concentration In Transformers},
+    author  = {Zhanchao Zhou and Tianyi Wu and Zhiyun Jiang and Zhenzhong Lan},
+    year    = {2024},
+    url     = {https://api.semanticscholar.org/CorpusID:273532030}
+}
+```

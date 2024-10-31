@@ -307,13 +307,18 @@ class Attention(Module):
         context = None,
         mask = None,
         rotary_emb = None,
-        attn_bias = None
+        attn_bias = None,
+        return_values = False,
+        value_residual = None
     ):
         n, device, h, has_context = x.shape[-2], x.device, self.heads, exists(context)
         context = default(context, x)
 
         q, k, v = (self.to_q(x), *self.to_kv(context).chunk(2, dim = -1))
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), (q, k, v))
+
+        if exists(value_residual):
+            v = 0.5 * (v + value_residual)
 
         if exists(rotary_emb):
             q = apply_rotary_pos_emb(rotary_emb, q)
@@ -322,7 +327,12 @@ class Attention(Module):
         out = self.attend(q, k, v, mask = mask, attn_bias = attn_bias)
 
         out = rearrange(out, 'b h n d -> b n (h d)')
-        return self.to_out(out)
+        out = self.to_out(out)
+
+        if not return_values:
+            return out
+
+        return out, v
 
 class FeedForward(Module):
     def __init__(
@@ -418,18 +428,26 @@ class ConformerBlock(Module):
         x,
         mask = None,
         rotary_emb = None,
-        attn_bias = None
+        attn_bias = None,
+        attn_value_residual = None,
+        return_values = False
     ):
         x = self.ff1(x) + x
 
         if exists(self.gateloop):
             x = self.gateloop(x) + x
 
-        x = self.attn(x, mask = mask, rotary_emb = rotary_emb, attn_bias = attn_bias) + x
+        attn_out, attn_values = self.attn(x, mask = mask, rotary_emb = rotary_emb, attn_bias = attn_bias, value_residual = attn_value_residual, return_values = True)
+        x = attn_out + x
+
         x = self.conv(x, mask = mask) + x
         x = self.ff2(x) + x
         x = self.post_norm(x)
-        return x
+
+        if not return_values:
+            return x
+
+        return x, attn_values
 
 # Conformer
 
@@ -484,13 +502,19 @@ class Conformer(Module):
         rotary_emb = self.rotary_emb(seq_len) if exists(self.rotary_emb) else None
         attn_bias = self.rel_pos_bias(seq_len) if exists(self.rel_pos_bias) else None
 
+        attn_value_residual = None
+
         for block in self.layers:
-            x = block(
+            x, attn_values = block(
                 x,
                 mask = mask,
                 rotary_emb = rotary_emb,
-                attn_bias = attn_bias
+                attn_bias = attn_bias,
+                attn_value_residual = attn_value_residual,
+                return_values = True
             )
+
+            attn_value_residual = default(attn_value_residual, attn_values)
 
         return x
 
