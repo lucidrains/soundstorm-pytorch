@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
   name = 'soundstorm-pytorch',
   packages = find_packages(exclude=[]),
-  version = '0.5.0',
+  version = '0.6.0',
   license='MIT',
   description = 'SoundStorm - Efficient Parallel Audio Generation from Google Deepmind, in Pytorch',
   author = 'Phil Wang',
@@ -22,10 +22,10 @@ setup(
     'audiolm-pytorch>=1.2.8',
     'beartype',
     'classifier-free-guidance-pytorch>=0.1.5',
-    'gateloop-transformer>=0.1.1',
-    'einops>=0.6.1',
+    'hyper-connections>=0.1.15',
+    'einops>=0.8.0',
     'spear-tts-pytorch>=0.4.0',
-    'torch>=1.6',
+    'torch>=2.2',
   ],
   classifiers = [
     'Development Status :: 4 - Beta',

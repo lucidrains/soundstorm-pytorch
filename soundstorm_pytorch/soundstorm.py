@@ -27,7 +27,7 @@ from spear_tts_pytorch import TextToSemantic
 from audiolm_pytorch import SoundStream
 from audiolm_pytorch import HubertWithKmeans, FairseqVQWav2Vec
 
-from gateloop_transformer import SimpleGateLoopLayer as GateLoop
+from hyper_connections import get_init_and_expand_reduce_stream_functions
 
 from tqdm import tqdm
 
@@ -287,7 +287,7 @@ class Attention(Module):
     ):
         super().__init__()
         inner_dim = dim_head * heads
-        self.heads= heads
+        self.heads = heads
         self.scale = dim_head ** -0.5
 
         self.attend = Attend(
@@ -299,6 +299,13 @@ class Attention(Module):
 
         self.to_q = nn.Linear(dim, inner_dim, bias = False)
         self.to_kv = nn.Linear(dim, inner_dim * 2, bias = False)
+
+        self.to_value_residual_mix = nn.Sequential(
+            nn.Linear(dim, heads, bias = False),
+            Rearrange('b n h -> b h n 1'),
+            nn.Sigmoid()
+        )
+
         self.to_out = nn.Linear(inner_dim, dim)
 
     def forward(
@@ -318,7 +325,8 @@ class Attention(Module):
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), (q, k, v))
 
         if exists(value_residual):
-            v = 0.5 * (v + value_residual)
+            mix = self.to_value_residual_mix(x)
+            v = v.lerp(value_residual, mix)
 
         if exists(rotary_emb):
             q = apply_rotary_pos_emb(rotary_emb, q)
@@ -406,20 +414,30 @@ class ConformerBlock(Module):
         ff_dropout = 0.,
         conv_dropout = 0.,
         conv_causal = False,
-        use_gateloop_layers = False
+        num_residual_streams = 4
     ):
         super().__init__()
-        self.ff1 = FeedForward(dim = dim, mult = ff_mult, dropout = ff_dropout)
 
-        self.gateloop = GateLoop(dim) if use_gateloop_layers else None
+        init_hyper_conn, *_ = get_init_and_expand_reduce_stream_functions(num_residual_streams, dim = dim, disable = num_residual_streams == 1)
 
-        self.attn = Attention(dim = dim, dim_head = dim_head, heads = heads, dropout = attn_dropout, flash = attn_flash)
-        self.conv = ConformerConvModule(dim = dim, causal = conv_causal, expansion_factor = conv_expansion_factor, kernel_size = conv_kernel_size, dropout = conv_dropout)
-        self.ff2 = FeedForward(dim = dim, mult = ff_mult, dropout = ff_dropout)
+        ff1 = FeedForward(dim = dim, mult = ff_mult, dropout = ff_dropout)
 
-        self.attn = PreNorm(dim, self.attn)
-        self.ff1 = Scale(0.5, PreNorm(dim, self.ff1))
-        self.ff2 = Scale(0.5, PreNorm(dim, self.ff2))
+        attn = Attention(dim = dim, dim_head = dim_head, heads = heads, dropout = attn_dropout, flash = attn_flash)
+        conv = ConformerConvModule(dim = dim, causal = conv_causal, expansion_factor = conv_expansion_factor, kernel_size = conv_kernel_size, dropout = conv_dropout)
+        ff2 = FeedForward(dim = dim, mult = ff_mult, dropout = ff_dropout)
+
+        # prenorm config for attention and feedforwards
+
+        attn = PreNorm(dim, attn)
+        ff1 = Scale(0.5, PreNorm(dim, ff1))
+        ff2 = Scale(0.5, PreNorm(dim, ff2))
+
+        # final wrap with hyper connection residual
+
+        self.conv = init_hyper_conn(branch = conv)
+        self.attn = init_hyper_conn(branch = attn)
+        self.ff1 = init_hyper_conn(branch = ff1)
+        self.ff2 = init_hyper_conn(branch = ff2)
 
         self.post_norm = nn.LayerNorm(dim)
 
@@ -432,16 +450,12 @@ class ConformerBlock(Module):
         attn_value_residual = None,
         return_values = False
     ):
-        x = self.ff1(x) + x
+        x = self.ff1(x)
 
-        if exists(self.gateloop):
-            x = self.gateloop(x) + x
+        x, attn_values = self.attn(x, mask = mask, rotary_emb = rotary_emb, attn_bias = attn_bias, value_residual = attn_value_residual, return_values = True)
 
-        attn_out, attn_values = self.attn(x, mask = mask, rotary_emb = rotary_emb, attn_bias = attn_bias, value_residual = attn_value_residual, return_values = True)
-        x = attn_out + x
-
-        x = self.conv(x, mask = mask) + x
-        x = self.ff2(x) + x
+        x = self.conv(x, mask = mask)
+        x = self.ff2(x)
         x = self.post_norm(x)
 
         if not return_values:
@@ -468,7 +482,7 @@ class Conformer(Module):
         conv_causal = False,
         attn_flash = True,
         t5_rel_pos_bias = False,
-        use_gateloop_layers = True
+        num_residual_streams = 4
     ):
         super().__init__()
 
@@ -479,6 +493,8 @@ class Conformer(Module):
 
         self.rotary_emb = RotaryEmbedding(dim_head) if not t5_rel_pos_bias else None
         self.rel_pos_bias = T5RelativePositionBias(dim_head ** 0.5, heads = heads) if t5_rel_pos_bias else None
+
+        _, self.expand_stream, self.reduce_stream = get_init_and_expand_reduce_stream_functions(num_residual_streams, disable = num_residual_streams == 1)
 
         for _ in range(depth):
             self.layers.append(ConformerBlock(
@@ -493,7 +509,7 @@ class Conformer(Module):
                 conv_dropout = conv_dropout,
                 conv_causal = conv_causal,
                 attn_flash = attn_flash,
-                use_gateloop_layers = use_gateloop_layers
+                num_residual_streams = num_residual_streams
             ))
 
     def forward(self, x, mask = None):
@@ -503,6 +519,8 @@ class Conformer(Module):
         attn_bias = self.rel_pos_bias(seq_len) if exists(self.rel_pos_bias) else None
 
         attn_value_residual = None
+
+        x = self.expand_stream(x)
 
         for block in self.layers:
             x, attn_values = block(
@@ -515,6 +533,8 @@ class Conformer(Module):
             )
 
             attn_value_residual = default(attn_value_residual, attn_values)
+
+        x = self.reduce_stream(x)
 
         return x
 
