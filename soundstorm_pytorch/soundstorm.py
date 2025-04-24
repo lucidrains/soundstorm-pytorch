@@ -39,6 +39,9 @@ def exists(val):
 def default(val, d):
     return val if exists(val) else d
 
+def xnor(x, y):
+    return not (x ^ y)
+
 def divisible_by(numer, denom):
     return (numer % denom) == 0
 
@@ -283,7 +286,8 @@ class Attention(Module):
         heads = 8,
         dim_head = 64,
         dropout = 0.,
-        flash = True
+        flash = True,
+        has_value_residual_mix = False
     ):
         super().__init__()
         inner_dim = dim_head * heads
@@ -304,7 +308,7 @@ class Attention(Module):
             nn.Linear(dim, heads, bias = False),
             Rearrange('b n h -> b h n 1'),
             nn.Sigmoid()
-        )
+        ) if has_value_residual_mix else None
 
         self.to_out = nn.Linear(inner_dim, dim)
 
@@ -318,6 +322,8 @@ class Attention(Module):
         return_values = False,
         value_residual = None
     ):
+        assert xnor(exists(value_residual), exists(self.to_value_residual_mix))
+
         n, device, h, has_context = x.shape[-2], x.device, self.heads, exists(context)
         context = default(context, x)
 
@@ -414,7 +420,8 @@ class ConformerBlock(Module):
         ff_dropout = 0.,
         conv_dropout = 0.,
         conv_causal = False,
-        num_residual_streams = 4
+        num_residual_streams = 4,
+        has_value_residual_mix = False
     ):
         super().__init__()
 
@@ -422,7 +429,7 @@ class ConformerBlock(Module):
 
         ff1 = FeedForward(dim = dim, mult = ff_mult, dropout = ff_dropout)
 
-        attn = Attention(dim = dim, dim_head = dim_head, heads = heads, dropout = attn_dropout, flash = attn_flash)
+        attn = Attention(dim = dim, dim_head = dim_head, heads = heads, dropout = attn_dropout, flash = attn_flash, has_value_residual_mix = has_value_residual_mix)
         conv = ConformerConvModule(dim = dim, causal = conv_causal, expansion_factor = conv_expansion_factor, kernel_size = conv_kernel_size, dropout = conv_dropout)
         ff2 = FeedForward(dim = dim, mult = ff_mult, dropout = ff_dropout)
 
@@ -496,7 +503,9 @@ class Conformer(Module):
 
         _, self.expand_stream, self.reduce_stream = get_init_and_expand_reduce_stream_functions(num_residual_streams, disable = num_residual_streams == 1)
 
-        for _ in range(depth):
+        for i in range(depth):
+            is_first = i == 0
+
             self.layers.append(ConformerBlock(
                 dim = dim,
                 dim_head = dim_head,
@@ -509,7 +518,8 @@ class Conformer(Module):
                 conv_dropout = conv_dropout,
                 conv_causal = conv_causal,
                 attn_flash = attn_flash,
-                num_residual_streams = num_residual_streams
+                num_residual_streams = num_residual_streams,
+                has_value_residual_mix = not is_first
             ))
 
     def forward(self, x, mask = None):
